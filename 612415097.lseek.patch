@@ -1,0 +1,202 @@
+diff --git a/Makefile b/Makefile
+index 09d790c..cf82cec 100644
+--- a/Makefile
++++ b/Makefile
+@@ -29,10 +29,11 @@ OBJS = \
+ 	vm.o\
+ 
+ # Cross-compiling (e.g., on Mac OS X)
+-# TOOLPREFIX = i386-jos-elf
++TOOLPREFIX = /Users/ommahalle/xv6-toolchain/gcc-tools/i386-elf-
++
+ 
+ # Using native tools (e.g., on X86 Linux)
+-#TOOLPREFIX = 
++#TOOLPREFIX =
+ 
+ # Try to infer the correct TOOLPREFIX if not set
+ ifndef TOOLPREFIX
+@@ -72,13 +73,13 @@ QEMU = $(shell if which qemu > /dev/null; \
+ endif
+ 
+ CC = $(TOOLPREFIX)gcc
+-AS = $(TOOLPREFIX)gas
++AS = $(TOOLPREFIX)as
+ LD = $(TOOLPREFIX)ld
+ OBJCOPY = $(TOOLPREFIX)objcopy
+ OBJDUMP = $(TOOLPREFIX)objdump
+-CFLAGS = -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -Werror -fno-omit-frame-pointer
++CFLAGS = -B$(HOME)/xv6-toolchain/gcc-tools/ -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -fno-omit-frame-pointer
+ CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
+-ASFLAGS = -m32 -gdwarf-2 -Wa,-divide
++ASFLAGS = -B$(HOME)/xv6-toolchain/gcc-tools/ -m32 -gdwarf-2 -Wa,-divide
+ # FreeBSD ld wants ``elf_i386_fbsd''
+ LDFLAGS += -m $(shell $(LD) -V | grep elf_i386 2>/dev/null | head -n 1)
+ 
+@@ -181,6 +182,8 @@ UPROGS=\
+ 	_usertests\
+ 	_wc\
+ 	_zombie\
++	_trylseek
++	
+ 
+ fs.img: mkfs README $(UPROGS)
+ 	./mkfs fs.img README $(UPROGS)
+diff --git a/fcntl.h b/fcntl.h
+index d565483..5cd29b6 100644
+--- a/fcntl.h
++++ b/fcntl.h
+@@ -2,3 +2,6 @@
+ #define O_WRONLY  0x001
+ #define O_RDWR    0x002
+ #define O_CREATE  0x200
++#define SEEK_SET 0
++#define SEEK_CUR 1
++#define SEEK_END 2
+diff --git a/syscall.c b/syscall.c
+index ee85261..4c9c7cc 100644
+--- a/syscall.c
++++ b/syscall.c
+@@ -97,6 +97,7 @@ extern int sys_mknod(void);
+ extern int sys_open(void);
+ extern int sys_pipe(void);
+ extern int sys_read(void);
++extern int sys_lseek(void);
+ extern int sys_sbrk(void);
+ extern int sys_sleep(void);
+ extern int sys_unlink(void);
+@@ -111,6 +112,7 @@ static int (*syscalls[])(void) = {
+ [SYS_pipe]    sys_pipe,
+ [SYS_read]    sys_read,
+ [SYS_kill]    sys_kill,
++[SYS_lseek]   sys_lseek,
+ [SYS_exec]    sys_exec,
+ [SYS_fstat]   sys_fstat,
+ [SYS_chdir]   sys_chdir,
+diff --git a/syscall.h b/syscall.h
+index bc5f356..f445d3d 100644
+--- a/syscall.h
++++ b/syscall.h
+@@ -20,3 +20,4 @@
+ #define SYS_link   19
+ #define SYS_mkdir  20
+ #define SYS_close  21
++#define SYS_lseek 22
+diff --git a/sysfile.c b/sysfile.c
+index bfe61b7..fb19638 100644
+--- a/sysfile.c
++++ b/sysfile.c
+@@ -442,3 +442,36 @@ sys_pipe(void)
+   fd[1] = fd1;
+   return 0;
+ }
++
++
++// lseek system call 
++int
++sys_lseek(void)
++{
++  struct file *f;
++  int offset, whence;
++  int newoff;
++
++  if(argfd(0, 0, &f) < 0 ||
++     argint(1, &offset) < 0 ||
++     argint(2, &whence) < 0)
++    return -1;
++
++  if(f->type == FD_PIPE)
++    return -1;
++
++  if(whence == SEEK_SET)
++    newoff = offset;
++  else if(whence == SEEK_CUR)
++    newoff = f->off + offset;
++  else if(whence == SEEK_END)
++    newoff = f->ip->size + offset;
++  else
++    return -1;
++
++  if(newoff < 0)
++    return -1;
++
++  f->off = newoff;
++  return newoff;
++}
+diff --git a/trylseek.c b/trylseek.c
+new file mode 100644
+index 0000000..a54e87f
+--- /dev/null
++++ b/trylseek.c
+@@ -0,0 +1,50 @@
++#include "types.h"
++#include "fcntl.h"
++#include "stat.h"
++#include "user.h"
++#include "fs.h"
++
++int
++main(int argc, char *argv[])
++{
++  int fd, i, n;
++  char buf[128];
++
++  if(argc != 2){
++    printf(2, "usage: trylseek filename\n");
++    exit();
++  }
++
++  fd = open(argv[1], O_RDONLY);
++  if(fd < 0){
++    printf(2, "unable to open file\n");
++    exit();
++  }
++
++  lseek(fd, 10, SEEK_SET);
++  n = read(fd, buf, 5);
++  for(i = 0; i < n; i++)
++    printf(1, "%c", buf[i]);
++  printf(1, "\n");
++
++  lseek(fd, 10, SEEK_CUR);
++  n = read(fd, buf, 5);
++  for(i = 0; i < n; i++)
++    printf(1, "%c", buf[i]);
++  printf(1, "\n");
++
++  lseek(fd, -5, SEEK_END);
++  n = read(fd, buf, 5);
++  for(i = 0; i < n; i++)
++    printf(1, "%c", buf[i]);
++  printf(1, "\n");
++
++  lseek(fd, 5, SEEK_END);
++  n = read(fd, buf, 5);
++  for(i = 0; i < n; i++)
++    printf(1, "%c", buf[i]);
++  printf(1, "\n");
++
++  close(fd);
++  exit();
++}
+diff --git a/user.h b/user.h
+index 4f99c52..d05ba2c 100644
+--- a/user.h
++++ b/user.h
+@@ -23,6 +23,7 @@ int getpid(void);
+ char* sbrk(int);
+ int sleep(int);
+ int uptime(void);
++int lseek(int, int, int);
+ 
+ // ulib.c
+ int stat(const char*, struct stat*);
+diff --git a/usys.S b/usys.S
+index 8bfd8a1..6244300 100644
+--- a/usys.S
++++ b/usys.S
+@@ -29,3 +29,4 @@ SYSCALL(getpid)
+ SYSCALL(sbrk)
+ SYSCALL(sleep)
+ SYSCALL(uptime)
++SYSCALL(lseek)

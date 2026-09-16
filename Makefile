@@ -182,7 +182,7 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
-	_cp
+	_trylseek
 	
 
 fs.img: mkfs README $(UPROGS)
