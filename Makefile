@@ -182,11 +182,9 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
-<<<<<<< Updated upstream
-	_cp
-=======
+	_cp\
 	_pgfault
->>>>>>> Stashed changes
+
 	
 
 fs.img: mkfs README $(UPROGS)
