@@ -48,11 +48,13 @@ trap(struct trapframe *tf)
 
   switch(tf->trapno){
   case T_PGFLT:
+         uint va = rcr2();
   	cprintf("page fault detected: \n");
+  	cprintf("%x\n", va);
   	myproc()->killed = 1;
   	break;
   	
-  case T_IRQ0 + IRQ_TIMER:
+  case T_IRQ0 + IRQ_TIMER:	
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;
