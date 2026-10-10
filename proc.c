@@ -6,6 +6,9 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "sleeplock.h"
+#include "fs.h"
+#include "buf.h"
 
 struct {
   struct spinlock lock;
@@ -400,14 +403,24 @@ forkret(void)
   // Still holding ptable.lock from scheduler.
   release(&ptable.lock);
 
-  if (first) {
+ if (first) {
+    struct buf *testbuf;
+
     // Some initialization functions must be run in the context
     // of a regular process (e.g., they call sleep), and thus cannot
     // be run from main().
     first = 0;
     iinit(ROOTDEV);
     initlog(ROOTDEV);
-  }
+
+    // Test reading block 2 from the third disk.
+    testbuf = bread(2, 2);
+
+    cprintf("Third disk read: dev=%d block=%d first_byte=%x\n",
+            testbuf->dev, testbuf->blockno, testbuf->data[0]);
+
+    brelse(testbuf);
+}
 
   // Return to "caller", actually trapret (see allocproc).
 }

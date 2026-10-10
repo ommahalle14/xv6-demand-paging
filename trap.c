@@ -64,12 +64,14 @@ trap(struct trapframe *tf)
     }
     lapiceoi();
     break;
-  case T_IRQ0 + IRQ_IDE:
-    ideintr();
+ case T_IRQ0 + IRQ_IDE:
+    ideintr(0);
     lapiceoi();
     break;
-  case T_IRQ0 + IRQ_IDE+1:
-    // Bochs generates spurious IDE1 interrupts.
+
+case T_IRQ0 + IRQ_IDE + 1:
+    ideintr(1);
+    lapiceoi();
     break;
   case T_IRQ0 + IRQ_KBD:
     kbdintr();

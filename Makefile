@@ -224,26 +224,27 @@ QEMUGDB = $(shell if $(QEMU) -help | grep -q '^-gdb'; \
 ifndef CPUS
 CPUS := 2
 endif
-QEMUOPTS = -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -smp $(CPUS) -m 512 $(QEMUEXTRA)
-
-qemu: fs.img xv6.img
+QEMUOPTS = -drive file=fs.img,index=1,media=disk,format=raw -drive file=xv6.img,index=0,media=disk,format=raw -drive file=third.img,index=2,media=disk,format=raw,if=ide -smp $(CPUS) -m 512 $(QEMUEXTRA)
+# Create a blank third IDE disk (2 MiB)
+third.img:
+	dd if=/dev/zero of=third.img bs=512 count=4096
+qemu: fs.img xv6.img third.img
 	$(QEMU) -serial mon:stdio $(QEMUOPTS)
 
 qemu-memfs: xv6memfs.img
 	$(QEMU) -drive file=xv6memfs.img,index=0,media=disk,format=raw -smp $(CPUS) -m 256
 
-qemu-nox: fs.img xv6.img
+qemu-nox: fs.img xv6.img third.img
 	$(QEMU) -nographic $(QEMUOPTS)
 
 .gdbinit: .gdbinit.tmpl
 	sed "s/localhost:1234/localhost:$(GDBPORT)/" < $^ > $@
 
-qemu-gdb: fs.img xv6.img .gdbinit
+qemu-gdb: fs.img xv6.img third.img .gdbinit
 	@echo "*** Now run 'gdb'." 1>&2
 	$(QEMU) -serial mon:stdio $(QEMUOPTS) -S $(QEMUGDB)
 
-qemu-nox-gdb: fs.img xv6.img .gdbinit
-	@echo "*** Now run 'gdb'." 1>&2
+qemu-nox-gdb: fs.img xv6.img third.img .gdbinit
 	$(QEMU) -nographic $(QEMUOPTS) -S $(QEMUGDB)
 
 # CUT HERE
