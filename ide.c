@@ -85,15 +85,21 @@ idestart(struct buf *b)
   if(b->blockno >= FSSIZE)
     panic("incorrect blockno");
     
-  int portno;
-
-if(b->dev <= 1)
-  portno = 0x1f0;
-else if(b->dev == 2)
+int portno;
+if(b == 0)
+  panic("idestart");
+if(b->dev == 2){
+  if(b->blockno >= THIRDDISKSIZE)
+    panic("idestart: third disk block out of range");
   portno = 0x170;
-else
+} else if(b->dev == 0 || b->dev == 1){
+  if(b->blockno >= FSSIZE)
+    panic("idestart: block out of range");
+  portno = 0x1f0;
+} else {
   panic("idestart: invalid device");
-  
+}
+
   
   int sector_per_block =  BSIZE/SECTOR_SIZE;
   int sector = b->blockno * sector_per_block;

@@ -404,20 +404,40 @@ forkret(void)
   release(&ptable.lock);
 
  if (first) {
-    struct buf *testbuf;
-
+   struct buf *testbuf;
+	int i, ok;
     // Some initialization functions must be run in the context
     // of a regular process (e.g., they call sleep), and thus cannot
     // be run from main().
     first = 0;
     iinit(ROOTDEV);
     initlog(ROOTDEV);
+	
+	    // Write a known pattern to block 3 on the third disk.
+    testbuf = bread(2, 3);
+    memset(testbuf->data, 0xA5, BSIZE);
+    bwrite(testbuf);
+    brelse(testbuf);
 
-    // Test reading block 2 from the third disk.
-    testbuf = bread(2, 2);
+    // Read other blocks to evict block 3 from the buffer cache.
+    for(i = 4; i < 4 + NBUF + 1; i++){
+      testbuf = bread(2, i);
+      brelse(testbuf);
+    }
 
-    cprintf("Third disk read: dev=%d block=%d first_byte=%x\n",
-            testbuf->dev, testbuf->blockno, testbuf->data[0]);
+    // Read block 3 again and verify the data.
+    testbuf = bread(2, 3);
+    ok = 1;
+
+    for(i = 0; i < BSIZE; i++){
+      if(testbuf->data[i] != 0xA5){
+        ok = 0;
+        break;
+      }
+    }
+
+    cprintf("Third disk write/read test: %s\n",
+            ok ? "PASS" : "FAIL");
 
     brelse(testbuf);
 }
