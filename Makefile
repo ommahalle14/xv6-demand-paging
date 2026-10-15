@@ -183,7 +183,8 @@ UPROGS=\
 	_wc\
 	_zombie\
 	_cp\
-	_pgfault
+	_pgfault\
+	_diskio
 
 	
 
