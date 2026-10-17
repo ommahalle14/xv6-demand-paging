@@ -27,6 +27,7 @@ OBJS = \
 	uart.o\
 	vectors.o\
 	vm.o\
+	swap.o\
 
 # Cross-compiling (e.g., on Mac OS X)
 TOOLPREFIX = /Users/ommahalle/xv6-toolchain/gcc-tools/i386-elf-
