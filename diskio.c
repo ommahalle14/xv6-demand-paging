@@ -11,7 +11,7 @@ main(void)
   for(i = 0; i < 512; i++)
     buf[i] = 0x5A;
 
-  if(diskio(buf, 100, 1) < 0){
+  if(diskio(buf, 3000, 1) < 0){
     printf(1, "disk write failed\n");
     exit();
   }
@@ -21,7 +21,7 @@ main(void)
   for(i = 0; i < 512; i++)
     buf[i] = 0;
 
-  if(diskio(buf, 100, 0) < 0){
+  if(diskio(buf, 3000, 0) < 0){
     printf(1, "disk read failed\n");
     exit();
   }

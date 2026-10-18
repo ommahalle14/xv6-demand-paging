@@ -82,8 +82,6 @@ idestart(struct buf *b)
 {
   if(b == 0)
     panic("idestart");
-  if(b->blockno >= FSSIZE)
-    panic("incorrect blockno");
     
 int portno;
 if(b == 0)
