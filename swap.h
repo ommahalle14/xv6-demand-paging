@@ -13,3 +13,5 @@ int valid;
 int swapalloc(int, uint);
 int swapwrite(int, char *);
 int swapread(int, char *);
+int swaplookup(int, uint);
+int swapfree(int, uint);

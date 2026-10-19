@@ -5,22 +5,27 @@
 #include "fs.h"
 #include "buf.h"
 #include "swap.h"
+#include "mmu.h"
+
+
 
 struct swapentry swaptable[MAXSWAPPAGES];
+static struct spinlock swaplock;
 
 void swapinit(void)
 {
   int i;
-
-  for(i = 0; i < MAXSWAPPAGES; i++){
-    swaptable[i].valid = 0;
-  }
+  initlock(&swaplock, "swap");
+  for(i = 0; i < MAXSWAPPAGES; i++)
+  swaptable[i].valid = 0;
 }
 
-int
-swapalloc(int pid, uint va)
+int swapalloc(int pid, uint va)
 {
   int i;
+  va = PGROUNDDOWN(va);
+
+  acquire(&swaplock);
 
   for(i = 0; i < MAXSWAPPAGES; i++){
     if(swaptable[i].valid == 0){
@@ -28,10 +33,12 @@ swapalloc(int pid, uint va)
       swaptable[i].va = va;
       swaptable[i].block = SWAPSTART + i * BLOCKSPERPAGE;
       swaptable[i].valid = 1;
+      release(&swaplock);
       return swaptable[i].block;
     }
   }
 
+  release(&swaplock);
   return -1;
 }
 
@@ -74,4 +81,48 @@ int swapread(int block, char *page)
   }
 
   return 0;
+}
+
+
+int
+swaplookup(int pid, uint va)
+{
+  int i;
+  int block = -1;
+
+  va = PGROUNDDOWN(va);
+  acquire(&swaplock);
+
+  for(i = 0; i < MAXSWAPPAGES; i++){
+    if(swaptable[i].valid &&
+       swaptable[i].pid == pid &&
+       swaptable[i].va == va){
+      block = swaptable[i].block;
+      break;
+    }
+  }
+
+  release(&swaplock);
+  return block;
+}
+
+int swapfree(int pid, uint va)
+{
+  int i;
+  va = PGROUNDDOWN(va);
+
+  acquire(&swaplock);
+
+  for(i = 0; i < MAXSWAPPAGES; i++){
+    if(swaptable[i].valid &&
+       swaptable[i].pid == pid &&
+       swaptable[i].va == va){
+      swaptable[i].valid = 0;
+      release(&swaplock);
+      return 0;
+    }
+  }
+
+  release(&swaplock);
+  return -1;
 }

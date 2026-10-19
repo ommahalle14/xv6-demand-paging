@@ -323,8 +323,7 @@ wait(void)
 //  - swtch to start running that process
 //  - eventually that process transfers control
 //      via swtch back to the scheduler.
-void
-scheduler(void)
+void scheduler(void)
 {
   struct proc *p;
   struct cpu *c = mycpu();
@@ -366,8 +365,7 @@ scheduler(void)
 // be proc->intena and proc->ncli, but that would
 // break in the few places where a lock is held but
 // there's no process.
-void
-sched(void)
+void sched(void)
 {
   int intena;
   struct proc *p = myproc();
@@ -406,7 +404,7 @@ void forkret(void)
 if(first){
   struct buf *testbuf;
   char *page;
-  int i, ok, block;
+  int i, ok, block, tableok;
     // Some initialization functions must be run in the context
     // of a regular process (e.g., they call sleep), and thus cannot
     // be run from main().
@@ -438,6 +436,22 @@ if(first){
     cprintf("Third disk write/read test: %s\n",
             ok ? "PASS" : "FAIL");
     brelse(testbuf);
+block = swapalloc(myproc()->pid, 0x4000);
+tableok = block >= 0;
+
+if(tableok){
+  if(swaplookup(myproc()->pid, 0x4000) != block)
+    tableok = 0;
+
+  if(swapfree(myproc()->pid, 0x4000) < 0)
+    tableok = 0;
+
+  if(swaplookup(myproc()->pid, 0x4000) != -1)
+    tableok = 0;
+}
+
+cprintf("Swap table test: %s\n",
+        tableok ? "PASS" : "FAIL");
    page = kalloc();
 
 if(page == 0){
