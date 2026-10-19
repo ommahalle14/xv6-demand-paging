@@ -9,6 +9,7 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "buf.h"
+#include "swap.h"
 
 struct {
   struct spinlock lock;
@@ -396,16 +397,16 @@ yield(void)
 
 // A fork child's very first scheduling by scheduler()
 // will swtch here.  "Return" to user space.
-void
-forkret(void)
+void forkret(void)
 {
   static int first = 1;
   // Still holding ptable.lock from scheduler.
   release(&ptable.lock);
 
- if (first) {
-   struct buf *testbuf;
-	int i, ok;
+if(first){
+  struct buf *testbuf;
+  char *page;
+  int i, ok, block;
     // Some initialization functions must be run in the context
     // of a regular process (e.g., they call sleep), and thus cannot
     // be run from main().
@@ -413,7 +414,7 @@ forkret(void)
     iinit(ROOTDEV);
     initlog(ROOTDEV);
 	
-	    // Write a known pattern to block 3 on the third disk.
+	// Write a known pattern to block 3 on the third disk.
     testbuf = bread(2, 3);
     memset(testbuf->data, 0xA5, BSIZE);
     bwrite(testbuf);
@@ -428,22 +429,57 @@ forkret(void)
     // Read block 3 again and verify the data.
     testbuf = bread(2, 3);
     ok = 1;
-
     for(i = 0; i < BSIZE; i++){
       if(testbuf->data[i] != 0xA5){
         ok = 0;
         break;
       }
     }
-
     cprintf("Third disk write/read test: %s\n",
             ok ? "PASS" : "FAIL");
-
     brelse(testbuf);
-}
+   page = kalloc();
 
+if(page == 0){
+  cprintf("Swap page write/read test: FAIL\n");
+} else {
+  block = swapalloc(myproc()->pid, 0x4000);
+  ok = block >= 0;
+  if(ok){
+    for(i = 0; i < PGSIZE; i++)
+      page[i] = i % 251;
+    if(swapwrite(block, page) < 0)
+      ok = 0;
+  }
+  if(ok){
+    memset(page, 0, PGSIZE);
+    for(i = SWAPSTART + BLOCKSPERPAGE;
+        i < SWAPSTART + BLOCKSPERPAGE + NBUF + BLOCKSPERPAGE;
+        i++){
+      testbuf = bread(SWAPDEV, i);
+      brelse(testbuf);
+    }
+    if(swapread(block, page) < 0)
+      ok = 0;
+  }
+  if(ok){
+    for(i = 0; i < PGSIZE; i++){
+      if((page[i] & 0xff) != i % 251){
+        ok = 0;
+        break;
+      }
+    }
+  }
+  cprintf("Swap page write/read test: %s\n",
+          ok ? "PASS" : "FAIL");
+
+  kfree(page);
+}
+}
   // Return to "caller", actually trapret (see allocproc).
 }
+
+
 
 // Atomically release lock and sleep on chan.
 // Reacquires lock when awakened.

@@ -9,3 +9,7 @@ uint va;
 int block;
 int valid;
 };
+
+int swapalloc(int, uint);
+int swapwrite(int, char *);
+int swapread(int, char *);
