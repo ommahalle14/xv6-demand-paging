@@ -2,6 +2,7 @@
 #include "param.h"
 #include "memlayout.h"
 #include "mmu.h"
+#include "swap.h"
 #include "proc.h"
 #include "defs.h"
 #include "x86.h"
@@ -86,6 +87,9 @@ exec(char *path, char **argv)
   sp -= (3+argc+1) * 4;
   if(copyout(pgdir, sp, ustack, (3+argc+1)*4) < 0)
     goto bad;
+
+if(swapout(pgdir, sz - PGSIZE, curproc->pid) < 0)
+  goto bad;
 
   // Save program name for debugging.
   for(last=s=path; *s; s++)

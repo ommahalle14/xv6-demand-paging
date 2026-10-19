@@ -4,8 +4,10 @@
 #include "x86.h"
 #include "memlayout.h"
 #include "mmu.h"
+#include "swap.h"
 #include "proc.h"
 #include "elf.h"
+
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
@@ -278,10 +280,72 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   return newsz;
 }
 
+int swapout(pde_t *pgdir, uint va, int pid)
+{
+  pte_t *pte;
+  char *page;
+  int block;
+
+  va = PGROUNDDOWN(va);
+  pte = walkpgdir(pgdir, (char*)va, 0);
+
+  if(pte == 0 || (*pte & PTE_P) == 0 ||
+     (*pte & PTE_U) == 0)
+    return -1;
+  page = (char*)P2V(PTE_ADDR(*pte));
+  block = swapalloc(pid, va);
+
+  if(block < 0)
+    return -1;
+
+  if(swapwrite(block, page) < 0){
+    swapfree(pid, va);
+    return -1;
+  }
+
+  *pte = 0;
+  if(myproc() && myproc()->pgdir == pgdir)
+    lcr3(V2P(pgdir));
+  kfree(page);
+  return 0;
+}
+
+int swapin(pde_t *pgdir, uint va, int pid)
+{
+  char *page;
+  int block;
+
+  va = PGROUNDDOWN(va);
+  block = swaplookup(pid, va);
+
+  if(block < 0)
+    return -1;
+
+  page = kalloc();
+  if(page == 0)
+    return -1;
+
+  if(swapread(block, page) < 0){
+    kfree(page);
+    return -1;
+  }
+
+  if(mappages(pgdir, (char*)va, PGSIZE,
+              V2P(page), PTE_W | PTE_U) < 0){
+    kfree(page);
+    return -1;
+  }
+
+  if(myproc() && myproc()->pgdir == pgdir)
+    lcr3(V2P(pgdir));
+
+  swapfree(pid, va);
+  return 0;
+}
+
 // Free a page table and all the physical memory pages
 // in the user part.
-void
-freevm(pde_t *pgdir)
+void freevm(pde_t *pgdir)
 {
   uint i;
 

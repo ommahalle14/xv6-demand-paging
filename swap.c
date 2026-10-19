@@ -4,8 +4,8 @@
 #include "sleeplock.h"
 #include "fs.h"
 #include "buf.h"
-#include "swap.h"
 #include "mmu.h"
+#include "swap.h"
 
 
 

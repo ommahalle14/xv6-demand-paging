@@ -3,6 +3,7 @@
 #include "param.h"
 #include "memlayout.h"
 #include "mmu.h"
+#include "swap.h"
 #include "proc.h"
 #include "x86.h"
 #include "traps.h"
@@ -47,14 +48,28 @@ trap(struct trapframe *tf)
   }
 
   switch(tf->trapno){
-  case T_PGFLT:{
-         uint va = rcr2();
-  	cprintf("page fault detected: \n");
-  	cprintf("%x\n", va);
-  	cprintf("error code: %d\n", tf->err);
-  	myproc()->killed = 1;
-  	break;
-  }
+ case T_PGFLT: {
+  uint va = rcr2();
+  uint pageva = PGROUNDDOWN(va);
+  struct proc *p = myproc();
+
+ if(p != 0 && (tf->cs & 3) == DPL_USER &&
+ (tf->err & PTE_P) == 0 &&
+ swapin(p->pgdir, pageva, p->pid) == 0){
+ cprintf("swapin restored page %x\n", pageva);
+ break;
+}
+
+  cprintf("page fault detected:\n");
+  cprintf("%x\n", va);
+  cprintf("error code: %d\n", tf->err);
+
+  if(p == 0 || (tf->cs & 3) != DPL_USER)
+    panic("kernel page fault");
+
+  p->killed = 1;
+  break;
+}
   case T_IRQ0 + IRQ_TIMER:	
     if(cpuid() == 0){
       acquire(&tickslock);
