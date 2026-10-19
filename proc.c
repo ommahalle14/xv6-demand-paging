@@ -449,10 +449,11 @@ if(tableok){
   if(swaplookup(myproc()->pid, 0x4000) != -1)
     tableok = 0;
 }
-
 cprintf("Swap table test: %s\n",
         tableok ? "PASS" : "FAIL");
-   page = kalloc();
+
+page = kalloc();
+
 
 if(page == 0){
   cprintf("Swap page write/read test: FAIL\n");
@@ -484,10 +485,13 @@ if(page == 0){
       }
     }
   }
-  cprintf("Swap page write/read test: %s\n",
-          ok ? "PASS" : "FAIL");
+ cprintf("Swap page write/read test: %s\n",
+        ok ? "PASS" : "FAIL");
 
-  kfree(page);
+if(block >= 0)
+  swapfree(myproc()->pid, 0x4000);
+
+kfree(page);
 }
 }
   // Return to "caller", actually trapret (see allocproc).
