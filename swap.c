@@ -126,3 +126,15 @@ int swapfree(int pid, uint va)
   release(&swaplock);
   return -1;
 }
+
+void swapfreepid(int pid)
+{
+  int i;
+  acquire(&swaplock);
+
+  for(i = 0; i < MAXSWAPPAGES; i++){
+   if(swaptable[i].valid && swaptable[i].pid == pid)
+   swaptable[i].valid = 0;
+  }
+  release(&swaplock);
+}

@@ -17,3 +17,4 @@ int swaplookup(int, uint);
 int swapfree(int, uint);
 int swapout(pde_t *, uint, int);
 int swapin(pde_t *, uint, int);
+void swapfreepid(int);

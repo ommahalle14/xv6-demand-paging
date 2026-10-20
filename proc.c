@@ -250,7 +250,8 @@ exit(void)
   iput(curproc->cwd);
   end_op();
   curproc->cwd = 0;
-
+  
+  swapfreepid(curproc->pid);
   acquire(&ptable.lock);
 
   // Parent might be sleeping in wait().
