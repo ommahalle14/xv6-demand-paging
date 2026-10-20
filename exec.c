@@ -55,12 +55,11 @@ execip = 0;
       goto bad;
     if(ph.vaddr + ph.memsz < ph.vaddr)
       goto bad;
-    if((sz = allocuvm(pgdir, sz, ph.vaddr + ph.memsz)) == 0)
-      goto bad;
-    if(ph.vaddr % PGSIZE != 0)
-      goto bad;
-    if(loaduvm(pgdir, (char*)ph.vaddr, ip, ph.off, ph.filesz) < 0)
-      goto bad;
+   if(ph.vaddr % PGSIZE != 0)
+  goto bad;
+
+if(ph.vaddr + ph.memsz > sz)
+  sz = ph.vaddr + ph.memsz;
 	segs[nseg].vaddr = ph.vaddr;
 	segs[nseg].off = ph.off;
 	segs[nseg].filesz = ph.filesz;
@@ -101,9 +100,6 @@ execip = 0;
     goto bad;
 
 if(swapout(pgdir, sz - PGSIZE, curproc->pid) < 0)
-  goto bad;
-
-if(unmaptestpage(pgdir, elf.entry) < 0)
   goto bad;
 
   // Save program name for debugging.

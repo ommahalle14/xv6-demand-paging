@@ -275,25 +275,6 @@ int loadelfpage(pde_t *pgdir, uint va, struct proc *p)
   return -1;
 }
 
-int
-unmaptestpage(pde_t *pgdir, uint va)
-{
-  pte_t *pte;
-  uint pa;
-
-  va = PGROUNDDOWN(va);
-  pte = walkpgdir(pgdir, (char*)va, 0);
-
-  if(pte == 0 || (*pte & PTE_P) == 0 ||
-     (*pte & PTE_U) == 0)
-    return -1;
-
-  pa = PTE_ADDR(*pte);
-  *pte = 0;
-  kfree((char*)P2V(pa));
-
-  return 0;
-}
 // Allocate page tables and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 int
@@ -462,12 +443,12 @@ copyuvm(pde_t *pgdir, uint sz)
 
   if((d = setupkvm()) == 0)
     return 0;
-  for(i = 0; i < sz; i += PGSIZE){
-    if((pte = walkpgdir(pgdir, (void *) i, 0)) == 0)
-      panic("copyuvm: pte should exist");
-    if(!(*pte & PTE_P))
-      panic("copyuvm: page not present");
-    pa = PTE_ADDR(*pte);
+for(i = 0; i < sz; i += PGSIZE){
+  pte = walkpgdir(pgdir, (void *) i, 0);
+  if(pte == 0 || !(*pte & PTE_P))
+    continue;
+  pa = PTE_ADDR(*pte);
+
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)
       goto bad;

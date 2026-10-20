@@ -53,7 +53,7 @@ trap(struct trapframe *tf)
   uint pageva = PGROUNDDOWN(va);
   struct proc *p = myproc();
 
- if(p != 0 && (tf->cs & 3) == DPL_USER &&
+if(p != 0 && va < KERNBASE &&
    (tf->err & PTE_P) == 0){
 
   if(swapin(p->pgdir, pageva, p->pid) == 0){

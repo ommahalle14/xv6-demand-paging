@@ -203,8 +203,12 @@ fork(void)
     return -1;
   }
   np->sz = curproc->sz;
-  np->parent = curproc;
-  *np->tf = *curproc->tf;
+np->parent = curproc;
+np->execip = curproc->execip ? idup(curproc->execip) : 0;
+np->nseg = curproc->nseg;
+memmove(np->segs, curproc->segs,
+        np->nseg * sizeof(np->segs[0]));
+*np->tf = *curproc->tf;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
