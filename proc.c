@@ -92,6 +92,8 @@ allocproc(void)
 found:
   p->state = EMBRYO;
   p->pid = nextpid++;
+  p->execip = 0;
+  p->nseg = 0;
 
   release(&ptable.lock);
 
@@ -246,10 +248,17 @@ exit(void)
     }
   }
 
-  begin_op();
-  iput(curproc->cwd);
-  end_op();
-  curproc->cwd = 0;
+begin_op();
+iput(curproc->cwd);
+
+if(curproc->execip){
+  iput(curproc->execip);
+  curproc->execip = 0;
+  curproc->nseg = 0;
+}
+
+end_op();
+curproc->cwd = 0;
   
   swapfreepid(curproc->pid);
   acquire(&ptable.lock);

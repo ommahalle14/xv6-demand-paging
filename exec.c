@@ -11,14 +11,17 @@
 int
 exec(char *path, char **argv)
 {
-  char *s, *last;
-  int i, off;
-  uint argc, sz, sp, ustack[3+MAXARG+1];
-  struct elfhdr elf;
-  struct inode *ip;
-  struct proghdr ph;
-  pde_t *pgdir, *oldpgdir;
-  struct proc *curproc = myproc();
+char *s, *last;
+int i, off, nseg;
+uint argc, sz, sp, ustack[3+MAXARG+1];
+struct elfhdr elf;
+struct inode *ip, *execip, *oldexecip;
+struct proghdr ph;
+struct execseg segs[NEXECSEG];
+pde_t *pgdir, *oldpgdir;
+struct proc *curproc = myproc();
+nseg = 0;
+execip = 0;
 
   begin_op();
 
@@ -46,6 +49,8 @@ exec(char *path, char **argv)
       goto bad;
     if(ph.type != ELF_PROG_LOAD)
       continue;
+    if(nseg >= NEXECSEG)
+      goto bad;
     if(ph.memsz < ph.filesz)
       goto bad;
     if(ph.vaddr + ph.memsz < ph.vaddr)
@@ -56,7 +61,14 @@ exec(char *path, char **argv)
       goto bad;
     if(loaduvm(pgdir, (char*)ph.vaddr, ip, ph.off, ph.filesz) < 0)
       goto bad;
+	segs[nseg].vaddr = ph.vaddr;
+	segs[nseg].off = ph.off;
+	segs[nseg].filesz = ph.filesz;
+	segs[nseg].memsz = ph.memsz;
+	segs[nseg].flags = ph.flags;
+	nseg++;
   }
+  execip = idup(ip);
   iunlockput(ip);
   end_op();
   ip = 0;
@@ -98,14 +110,33 @@ if(swapout(pgdir, sz - PGSIZE, curproc->pid) < 0)
   safestrcpy(curproc->name, last, sizeof(curproc->name));
 
   // Commit to the user image.
-  oldpgdir = curproc->pgdir;
-  curproc->pgdir = pgdir;
-  curproc->sz = sz;
-  curproc->tf->eip = elf.entry;  // main
-  curproc->tf->esp = sp;
-  switchuvm(curproc);
-  freevm(oldpgdir);
-  return 0;
+oldexecip = curproc->execip;
+curproc->execip = execip;
+execip = 0;
+curproc->nseg = nseg;
+memmove(curproc->segs, segs, nseg * sizeof(segs[0]));
+
+oldpgdir = curproc->pgdir;
+curproc->pgdir = pgdir;
+curproc->sz = sz;
+curproc->tf->eip = elf.entry;
+curproc->tf->esp = sp;
+switchuvm(curproc);
+freevm(oldpgdir);
+
+if(oldexecip){
+  begin_op();
+  iput(oldexecip);
+  end_op();
+}
+
+return 0;
+
+if(execip){
+  begin_op();
+  iput(execip);
+  end_op();
+}
 
  bad:
   if(pgdir)

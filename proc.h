@@ -34,6 +34,15 @@ struct context {
 
 enum procstate { UNUSED, EMBRYO, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
 
+
+
+struct execseg {
+  uint vaddr;
+  uint off;
+  uint filesz;
+  uint memsz;
+  uint flags;
+};
 // Per-process state
 struct proc {
   uint sz;                     // Size of process memory (bytes)
@@ -48,6 +57,9 @@ struct proc {
   int killed;                  // If non-zero, have been killed
   struct file *ofile[NOFILE];  // Open files
   struct inode *cwd;           // Current directory
+  struct inode *execip;
+  int nseg;
+  struct execseg segs[NEXECSEG];
   char name[16];               // Process name (debugging)
 };
 
