@@ -218,6 +218,82 @@ loaduvm(pde_t *pgdir, char *addr, struct inode *ip, uint offset, uint sz)
   return 0;
 }
 
+int loadelfpage(pde_t *pgdir, uint va, struct proc *p)
+{
+  int i, n;
+  uint off;
+  char *mem;
+  pte_t *pte;
+  struct execseg *seg;
+
+  if(p == 0 || p->execip == 0)
+    return -1;
+
+  va = PGROUNDDOWN(va);
+
+  for(i = 0; i < p->nseg; i++){
+    seg = &p->segs[i];
+
+    if(va < seg->vaddr || va >= seg->vaddr + seg->memsz)
+      continue;
+
+    mem = kalloc();
+    if(mem == 0)
+      return -1;
+
+    memset(mem, 0, PGSIZE);
+
+    if(va < seg->vaddr + seg->filesz){
+      off = seg->off + va - seg->vaddr;
+      n = seg->vaddr + seg->filesz - va;
+
+      if(n > PGSIZE)
+        n = PGSIZE;
+
+      ilock(p->execip);
+      if(readi(p->execip, mem, off, n) != n){
+        iunlock(p->execip);
+        kfree(mem);
+        return -1;
+      }
+      iunlock(p->execip);
+    }
+
+    pte = walkpgdir(pgdir, (char*)va, 1);
+    if(pte == 0 || (*pte & PTE_P)){
+      kfree(mem);
+      return -1;
+    }
+
+    *pte = V2P(mem) | PTE_P | PTE_W | PTE_U;
+
+    if(myproc() && myproc()->pgdir == pgdir)
+    lcr3(V2P(pgdir));
+    return 0;
+  }
+
+  return -1;
+}
+
+int
+unmaptestpage(pde_t *pgdir, uint va)
+{
+  pte_t *pte;
+  uint pa;
+
+  va = PGROUNDDOWN(va);
+  pte = walkpgdir(pgdir, (char*)va, 0);
+
+  if(pte == 0 || (*pte & PTE_P) == 0 ||
+     (*pte & PTE_U) == 0)
+    return -1;
+
+  pa = PTE_ADDR(*pte);
+  *pte = 0;
+  kfree((char*)P2V(pa));
+
+  return 0;
+}
 // Allocate page tables and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 int

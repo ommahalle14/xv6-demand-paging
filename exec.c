@@ -103,6 +103,9 @@ execip = 0;
 if(swapout(pgdir, sz - PGSIZE, curproc->pid) < 0)
   goto bad;
 
+if(unmaptestpage(pgdir, elf.entry) < 0)
+  goto bad;
+
   // Save program name for debugging.
   for(last=s=path; *s; s++)
     if(*s == '/')

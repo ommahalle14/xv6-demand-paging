@@ -54,10 +54,16 @@ trap(struct trapframe *tf)
   struct proc *p = myproc();
 
  if(p != 0 && (tf->cs & 3) == DPL_USER &&
- (tf->err & PTE_P) == 0 &&
- swapin(p->pgdir, pageva, p->pid) == 0){
- cprintf("swapin restored page %x\n", pageva);
- break;
+   (tf->err & PTE_P) == 0){
+
+  if(swapin(p->pgdir, pageva, p->pid) == 0){
+    cprintf("swapin restored page %x\n", pageva);
+    break;
+  }
+  if(loadelfpage(p->pgdir, pageva, p) == 0){
+    cprintf("loaded ELF page %x\n", pageva);
+    break;
+  }
 }
 
   cprintf("page fault detected:\n");
