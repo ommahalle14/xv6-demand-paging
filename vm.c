@@ -346,8 +346,8 @@ static int evictpage(pde_t *pgdir, uint sz, int pid)
     if((*pte & PTE_P) == 0 || (*pte & PTE_U) == 0)
       continue;
 
-         if(swapout(pgdir, a, pid) == 0)
-      	return 0;
+    if(swapout(pgdir, a, pid) == 0)
+      return 0;
   }
 
   return -1;
