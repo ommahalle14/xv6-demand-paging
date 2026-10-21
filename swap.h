@@ -7,10 +7,12 @@ struct swapentry {
 int pid;
 uint va;
 int block;
+int flags;
 int valid;
 };
 
-int swapalloc(int, uint);
+int swapalloc(int, uint, int);
+int swapgetflags(int, uint);
 int swapwrite(int, char *);
 int swapread(int, char *);
 int swaplookup(int, uint);

@@ -20,7 +20,7 @@ void swapinit(void)
   swaptable[i].valid = 0;
 }
 
-int swapalloc(int pid, uint va)
+int swapalloc(int pid, uint va, int flags)
 {
   int i;
   va = PGROUNDDOWN(va);
@@ -32,6 +32,7 @@ int swapalloc(int pid, uint va)
       swaptable[i].pid = pid;
       swaptable[i].va = va;
       swaptable[i].block = SWAPSTART + i * BLOCKSPERPAGE;
+      swaptable[i].flags = flags & (PTE_W | PTE_U);
       swaptable[i].valid = 1;
       release(&swaplock);
       return swaptable[i].block;
@@ -105,6 +106,29 @@ swaplookup(int pid, uint va)
   release(&swaplock);
   return block;
 }
+
+int swapgetflags(int pid, uint va)
+{
+  int i;
+  int flags = -1;
+
+  va = PGROUNDDOWN(va);
+  acquire(&swaplock);
+
+  for(i = 0; i < MAXSWAPPAGES; i++){
+    if(swaptable[i].valid &&
+	swaptable[i].pid == pid &&
+	swaptable[i].va == va){
+	flags = swaptable[i].flags;
+          break;
+    }
+  }
+
+  release(&swaplock);
+  return flags;
+}
+
+
 
 int swapfree(int pid, uint va)
 {

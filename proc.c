@@ -450,7 +450,7 @@ if(first){
     cprintf("Third disk write/read test: %s\n",
             ok ? "PASS" : "FAIL");
     brelse(testbuf);
-block = swapalloc(myproc()->pid, 0x4000);
+block = swapalloc(myproc()->pid, 0x4000, PTE_W | PTE_U);
 tableok = block >= 0;
 
 if(tableok){
@@ -472,7 +472,7 @@ page = kalloc();
 if(page == 0){
   cprintf("Swap page write/read test: FAIL\n");
 } else {
-  block = swapalloc(myproc()->pid, 0x4000);
+ block = swapalloc(myproc()->pid, 0x4000, PTE_W | PTE_U);
   ok = block >= 0;
   if(ok){
     for(i = 0; i < PGSIZE; i++)

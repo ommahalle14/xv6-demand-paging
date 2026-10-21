@@ -345,6 +345,7 @@ int swapout(pde_t *pgdir, uint va, int pid)
   pte_t *pte;
   char *page;
   int block;
+  int flags;
 
   va = PGROUNDDOWN(va);
   pte = walkpgdir(pgdir, (char*)va, 0);
@@ -352,8 +353,10 @@ int swapout(pde_t *pgdir, uint va, int pid)
   if(pte == 0 || (*pte & PTE_P) == 0 ||
      (*pte & PTE_U) == 0)
     return -1;
+
   page = (char*)P2V(PTE_ADDR(*pte));
-  block = swapalloc(pid, va);
+  flags = PTE_FLAGS(*pte) & (PTE_W | PTE_U);
+  block = swapalloc(pid, va, flags);
 
   if(block < 0)
     return -1;
@@ -364,8 +367,10 @@ int swapout(pde_t *pgdir, uint va, int pid)
   }
 
   *pte = 0;
+
   if(myproc() && myproc()->pgdir == pgdir)
     lcr3(V2P(pgdir));
+
   kfree(page);
   return 0;
 }
@@ -374,11 +379,13 @@ int swapin(pde_t *pgdir, uint va, int pid)
 {
   char *page;
   int block;
+  int flags;
 
   va = PGROUNDDOWN(va);
   block = swaplookup(pid, va);
+  flags = swapgetflags(pid, va);
 
-  if(block < 0)
+  if(block < 0 || flags < 0)
     return -1;
 
   page = kalloc();
@@ -391,7 +398,7 @@ int swapin(pde_t *pgdir, uint va, int pid)
   }
 
   if(mappages(pgdir, (char*)va, PGSIZE,
-              V2P(page), PTE_W | PTE_U) < 0){
+              V2P(page), flags) < 0){
     kfree(page);
     return -1;
   }
@@ -402,7 +409,6 @@ int swapin(pde_t *pgdir, uint va, int pid)
   swapfree(pid, va);
   return 0;
 }
-
 // Free a page table and all the physical memory pages
 // in the user part.
 void freevm(pde_t *pgdir)
