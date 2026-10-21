@@ -323,9 +323,12 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   if(newsz >= oldsz)
     return oldsz;
 
-  a = PGROUNDUP(newsz);
-  for(; a  < oldsz; a += PGSIZE){
-    pte = walkpgdir(pgdir, (char*)a, 0);
+ a = PGROUNDUP(newsz);
+for(; a < oldsz; a += PGSIZE){
+  if(myproc() != 0 && myproc()->pgdir == pgdir)
+    swapfree(myproc()->pid, a);
+
+  pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
       a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
     else if((*pte & PTE_P) != 0){
