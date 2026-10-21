@@ -53,18 +53,21 @@ trap(struct trapframe *tf)
   uint pageva = PGROUNDDOWN(va);
   struct proc *p = myproc();
 
-if(p != 0 && va < KERNBASE &&
-   (tf->err & PTE_P) == 0){
+  if(p != 0 && va < KERNBASE &&
+     (tf->err & PTE_P) == 0){
 
-  if(swapin(p->pgdir, pageva, p->pid) == 0){
-    cprintf("swapin restored page %x\n", pageva);
-    break;
+    if(swaplookup(p->pid, pageva) >= 0){
+      if(swapin(p->pgdir, pageva, p->pid) == 0){
+        cprintf("swapin restored page %x\n", pageva);
+        break;
+      }
+    } else {
+      if(loadelfpage(p->pgdir, pageva, p) == 0){
+        cprintf("loaded ELF page %x\n", pageva);
+        break;
+      }
+    }
   }
-  if(loadelfpage(p->pgdir, pageva, p) == 0){
-    cprintf("loaded ELF page %x\n", pageva);
-    break;
-  }
-}
 
   cprintf("page fault detected:\n");
   cprintf("%x\n", va);

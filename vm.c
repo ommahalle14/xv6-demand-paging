@@ -278,6 +278,81 @@ int loadelfpage(pde_t *pgdir, uint va, struct proc *p)
   return -1;
 }
 
+int
+resolveuserpages(pde_t *pgdir, uint addr, uint size, struct proc *p)
+{
+  uint a, last;
+  pte_t *pte;
+
+  if(p == 0 || p->pgdir != pgdir)
+    return -1;
+
+  if(size == 0)
+    return 0;
+
+  if(addr >= p->sz || size > p->sz - addr)
+    return -1;
+
+  a = PGROUNDDOWN(addr);
+  last = PGROUNDDOWN(addr + size - 1);
+
+  for(;;){
+    pte = walkpgdir(pgdir, (char*)a, 0);
+
+       if(pte == 0 || (*pte & PTE_P) == 0){
+      if(swaplookup(p->pid, a) >= 0){
+        if(swapin(pgdir, a, p->pid) < 0)
+          return -1;
+      } else {
+        if(loadelfpage(pgdir, a, p) < 0)
+          return -1;
+      }
+
+      pte = walkpgdir(pgdir, (char*)a, 0);
+    }
+
+    if(pte == 0 ||
+       (*pte & (PTE_P | PTE_U)) != (PTE_P | PTE_U))
+      return -1;
+
+    if(a == last)
+      break;
+
+    a += PGSIZE;
+  }
+
+  return 0;
+}
+
+
+
+static int evictpage(pde_t *pgdir, uint sz, int pid)
+{
+  uint a;
+  pte_t *pte;
+  struct proc *p;
+
+  p = myproc();
+
+  if(p == 0 || p->pgdir != pgdir || p->pid != pid)
+    return -1;
+
+  for(a = 0; a < sz; a += PGSIZE){
+    pte = walkpgdir(pgdir, (char*)a, 0);
+
+    if(pte == 0)
+      continue;
+
+    if((*pte & PTE_P) == 0 || (*pte & PTE_U) == 0)
+      continue;
+
+         if(swapout(pgdir, a, pid) == 0)
+      	return 0;
+  }
+
+  return -1;
+}
+
 // Allocate page tables and physical memory to grow process from oldsz to
 // newsz, which need not be page aligned.  Returns new size or 0 on error.
 int
@@ -294,19 +369,30 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   a = PGROUNDUP(oldsz);
   for(; a < newsz; a += PGSIZE){
     mem = kalloc();
+
     if(mem == 0){
-      cprintf("allocuvm out of memory\n");
-      deallocuvm(pgdir, newsz, oldsz);
-      return 0;
+      if(myproc() != 0 && myproc()->pgdir == pgdir &&
+         evictpage(pgdir, oldsz, myproc()->pid) == 0)
+        mem = kalloc();
+
+      if(mem == 0){
+        cprintf("allocuvm out of memory\n");
+        deallocuvm(pgdir, newsz, oldsz);
+        return 0;
+      }
     }
+
     memset(mem, 0, PGSIZE);
-    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
+
+    if(mappages(pgdir, (char*)a, PGSIZE,
+                V2P(mem), PTE_W | PTE_U) < 0){
       cprintf("allocuvm out of memory (2)\n");
       deallocuvm(pgdir, newsz, oldsz);
       kfree(mem);
       return 0;
     }
   }
+
   return newsz;
 }
 

@@ -99,8 +99,6 @@ if(ph.vaddr + ph.memsz > sz)
   if(copyout(pgdir, sp, ustack, (3+argc+1)*4) < 0)
     goto bad;
 
-if(swapout(pgdir, sz - PGSIZE, curproc->pid) < 0)
-  goto bad;
 
   // Save program name for debugging.
   for(last=s=path; *s; s++)
@@ -122,6 +120,8 @@ curproc->tf->eip = elf.entry;
 curproc->tf->esp = sp;
 switchuvm(curproc);
 freevm(oldpgdir);
+swapfreepid(curproc->pid);
+swapout(curproc->pgdir, sz - PGSIZE, curproc->pid);
 
 if(oldexecip){
   begin_op();
