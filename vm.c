@@ -265,7 +265,10 @@ int loadelfpage(pde_t *pgdir, uint va, struct proc *p)
       return -1;
     }
 
-    *pte = V2P(mem) | PTE_P | PTE_W | PTE_U;
+    if(seg->flags & 2)
+  *pte = V2P(mem) | PTE_P | PTE_W | PTE_U;
+    else
+  *pte = V2P(mem) | PTE_P | PTE_U;
 
     if(myproc() && myproc()->pgdir == pgdir)
     lcr3(V2P(pgdir));
