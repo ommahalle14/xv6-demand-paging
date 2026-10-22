@@ -185,7 +185,8 @@ UPROGS=\
 	_zombie\
 	_cp\
 	_pgfault\
-	_diskio
+	_diskio\
+	_evicttest
 
 	
 
