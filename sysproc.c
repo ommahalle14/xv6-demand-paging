@@ -113,34 +113,15 @@ sys_diskio(void)
   if(blockno < 0 || blockno >= THIRDDISKSIZE)
     return -1;
 
-  cprintf("diskio: block=%d write=%d user[0]=%x\n",
-          blockno, write, p[0] & 0xff);
-
   b = bread(2, blockno);
-
-  cprintf("diskio: after bread data[0]=%x\n",
-          b->data[0] & 0xff);
 
   if(write){
     memmove(b->data, p, BSIZE);
-
-    cprintf("diskio: after copy data[0]=%x\n",
-            b->data[0] & 0xff);
-
     bwrite(b);
 
-    cprintf("diskio: after bwrite data[0]=%x\n",
-            b->data[0] & 0xff);
   } else {
-    cprintf("diskio: read data[0]=%x\n",
-            b->data[0] & 0xff);
-
     memmove(p, b->data, BSIZE);
-
-    cprintf("diskio: user after copy[0]=%x\n",
-            p[0] & 0xff);
   }
-
   brelse(b);
   return 0;
 }

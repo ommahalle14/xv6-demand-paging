@@ -7,13 +7,19 @@
 #include "swap.h"
 #include "proc.h"
 #include "elf.h"
-
+#include "spinlock.h"
 
 extern char data[];  // defined by kernel.ld
 pde_t *kpgdir;  // for use in scheduler()
 
 // Set up CPU's kernel segment descriptors.
 // Run once on entry on each CPU.
+
+static uint fifocounter;
+static uint fifoarival[PHYSTOP / PGSIZE];
+static struct spinlock fifolock;
+static uint fifopinned[PHYSTOP / PGSIZE];
+
 void
 seginit(void)
 {
@@ -56,6 +62,57 @@ walkpgdir(pde_t *pgdir, const void *va, int alloc)
   return &pgtab[PTX(va)];
 }
 
+static void
+fiforecord(pde_t *pgdir, uint va)
+{
+  pte_t *pte;
+  uint pa;
+
+  va = PGROUNDDOWN(va);
+  pte = walkpgdir(pgdir, (char*)va, 0);
+
+  if(pte == 0 || (*pte & (PTE_P | PTE_U)) != (PTE_P | PTE_U))
+    return;
+pa = PTE_ADDR(*pte);
+
+acquire(&fifolock);
+fifoarival[pa / PGSIZE] = ++fifocounter;
+release(&fifolock);
+}
+
+static int
+fifopin(pde_t *pgdir, uint va)
+{
+  pte_t *pte;
+  uint pa;
+
+  pte = walkpgdir(pgdir, (char*)PGROUNDDOWN(va), 0);
+  if(pte == 0 || (*pte & (PTE_P | PTE_U)) != (PTE_P | PTE_U))
+    return -1;
+
+  pa = PTE_ADDR(*pte);
+  acquire(&fifolock);
+  fifopinned[pa / PGSIZE]++;
+  release(&fifolock);
+  return 0;
+}
+
+static void
+fifounpin(pde_t *pgdir, uint va)
+{
+  pte_t *pte;
+  uint pa;
+
+  pte = walkpgdir(pgdir, (char*)PGROUNDDOWN(va), 0);
+  if(pte == 0 || (*pte & (PTE_P | PTE_U)) != (PTE_P | PTE_U))
+    return;
+
+  pa = PTE_ADDR(*pte);
+  acquire(&fifolock);
+  if(fifopinned[pa / PGSIZE] > 0)
+    fifopinned[pa / PGSIZE]--;
+  release(&fifolock);
+}
 // Create PTEs for virtual addresses starting at va that refer to
 // physical addresses starting at pa. va and size might not
 // be page-aligned.
@@ -142,10 +199,10 @@ setupkvm(void)
 void
 kvmalloc(void)
 {
+  initlock(&fifolock, "fifo");
   kpgdir = setupkvm();
   switchkvm();
 }
-
 // Switch h/w page table register to the kernel-only page table,
 // for when no process is running.
 void
@@ -192,6 +249,7 @@ inituvm(pde_t *pgdir, char *init, uint sz)
   memset(mem, 0, PGSIZE);
   mappages(pgdir, 0, PGSIZE, V2P(mem), PTE_W|PTE_U);
   memmove(mem, init, sz);
+  fiforecord(pgdir, 0);
 }
 
 // Load a program segment into pgdir.  addr must be page-aligned
@@ -272,6 +330,7 @@ int loadelfpage(pde_t *pgdir, uint va, struct proc *p)
 
     if(myproc() && myproc()->pgdir == pgdir)
     lcr3(V2P(pgdir));
+    fiforecord(pgdir, va);
     return 0;
   }
 
@@ -281,76 +340,105 @@ int loadelfpage(pde_t *pgdir, uint va, struct proc *p)
 int
 resolveuserpages(pde_t *pgdir, uint addr, uint size, struct proc *p)
 {
-  uint a, last;
+  uint a, last, start;
   pte_t *pte;
+  int pinned;
 
   if(p == 0 || p->pgdir != pgdir)
     return -1;
-
   if(size == 0)
     return 0;
-
   if(addr >= p->sz || size > p->sz - addr)
     return -1;
 
-  a = PGROUNDDOWN(addr);
+  start = PGROUNDDOWN(addr);
+  a = start;
   last = PGROUNDDOWN(addr + size - 1);
+  pinned = 0;
 
   for(;;){
     pte = walkpgdir(pgdir, (char*)a, 0);
-
-       if(pte == 0 || (*pte & PTE_P) == 0){
+    if(pte == 0 || (*pte & PTE_P) == 0){
       if(swaplookup(p->pid, a) >= 0){
         if(swapin(pgdir, a, p->pid) < 0)
-          return -1;
+          goto bad;
       } else {
         if(loadelfpage(pgdir, a, p) < 0)
-          return -1;
+          goto bad;
       }
-
       pte = walkpgdir(pgdir, (char*)a, 0);
     }
 
     if(pte == 0 ||
        (*pte & (PTE_P | PTE_U)) != (PTE_P | PTE_U))
-      return -1;
+      goto bad;
+    if(fifopin(pgdir, a) < 0)
+      goto bad;
+    pinned++;
 
     if(a == last)
       break;
-
     a += PGSIZE;
   }
 
+  a = start;
+  while(pinned > 0){
+    fifounpin(pgdir, a);
+    a += PGSIZE;
+    pinned--;
+  }
   return 0;
-}
 
+bad:
+  a = start;
+  while(pinned > 0){
+    fifounpin(pgdir, a);
+    a += PGSIZE;
+    pinned--;
+  }
+  return -1;
+}
 
 
 static int evictpage(pde_t *pgdir, uint sz, int pid)
 {
-  uint a;
+  uint a, victim, pa, age, oldest;
   pte_t *pte;
   struct proc *p;
+  int found;
 
   p = myproc();
-
   if(p == 0 || p->pgdir != pgdir || p->pid != pid)
     return -1;
 
+  found = 0;
   for(a = 0; a < sz; a += PGSIZE){
     pte = walkpgdir(pgdir, (char*)a, 0);
 
-    if(pte == 0)
+    if(pte == 0 ||
+       (*pte & (PTE_P | PTE_U)) != (PTE_P | PTE_U))
       continue;
+   pa = PTE_ADDR(*pte);
 
-    if((*pte & PTE_P) == 0 || (*pte & PTE_U) == 0)
-      continue;
+acquire(&fifolock);
+age = fifoarival[pa / PGSIZE];
+if(fifopinned[pa / PGSIZE] != 0){
+  release(&fifolock);
+  continue;
+}
+release(&fifolock);
 
-    if(swapout(pgdir, a, pid) == 0)
-      return 0;
+if(age == 0)
+  continue;
+    if(!found || age < oldest){
+      victim = a;
+      oldest = age;
+      found = 1;
+    }
   }
-
-  return -1;
+  if(!found)
+    return -1;
+  return swapout(pgdir, victim, pid);
 }
 
 // Allocate page tables and physical memory to grow process from oldsz to
@@ -376,7 +464,6 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
         mem = kalloc();
 
       if(mem == 0){
-        cprintf("allocuvm out of memory\n");
         deallocuvm(pgdir, newsz, oldsz);
         return 0;
       }
@@ -384,13 +471,13 @@ allocuvm(pde_t *pgdir, uint oldsz, uint newsz)
 
     memset(mem, 0, PGSIZE);
 
-    if(mappages(pgdir, (char*)a, PGSIZE,
-                V2P(mem), PTE_W | PTE_U) < 0){
-      cprintf("allocuvm out of memory (2)\n");
+    if(mappages(pgdir, (char*)a, PGSIZE, V2P(mem), PTE_W|PTE_U) < 0){
       deallocuvm(pgdir, newsz, oldsz);
       kfree(mem);
       return 0;
     }
+
+    fiforecord(pgdir, a);
   }
 
   return newsz;
@@ -409,12 +496,12 @@ deallocuvm(pde_t *pgdir, uint oldsz, uint newsz)
   if(newsz >= oldsz)
     return oldsz;
 
- a = PGROUNDUP(newsz);
-for(; a < oldsz; a += PGSIZE){
-  if(myproc() != 0 && myproc()->pgdir == pgdir)
-    swapfree(myproc()->pid, a);
+   a = PGROUNDUP(newsz);
+  for(; a < oldsz; a += PGSIZE){
+    if(myproc() != 0 && myproc()->pgdir == pgdir)
+      swapfree(myproc()->pid, a);
 
-  pte = walkpgdir(pgdir, (char*)a, 0);
+    pte = walkpgdir(pgdir, (char*)a, 0);
     if(!pte)
       a = PGADDR(PDX(a) + 1, 0, 0) - PGSIZE;
     else if((*pte & PTE_P) != 0){
@@ -477,9 +564,20 @@ int swapin(pde_t *pgdir, uint va, int pid)
   if(block < 0 || flags < 0)
     return -1;
 
-  page = kalloc();
-  if(page == 0)
-    return -1;
+    page = kalloc();
+  if(page == 0){
+    struct proc *p = myproc();
+
+    if(p == 0 || p->pgdir != pgdir || p->pid != pid)
+      return -1;
+
+    if(evictpage(pgdir, p->sz, pid) < 0)
+      return -1;
+
+    page = kalloc();
+    if(page == 0)
+      return -1;
+  }
 
   if(swapread(block, page) < 0){
     kfree(page);
@@ -496,11 +594,13 @@ int swapin(pde_t *pgdir, uint va, int pid)
     lcr3(V2P(pgdir));
 
   swapfree(pid, va);
+  fiforecord(pgdir, va);
   return 0;
 }
 // Free a page table and all the physical memory pages
 // in the user part.
-void freevm(pde_t *pgdir)
+void
+freevm(pde_t *pgdir)
 {
   uint i;
 
@@ -532,19 +632,38 @@ clearpteu(pde_t *pgdir, char *uva)
 // Given a parent process's page table, create a copy
 // of it for a child.
 pde_t*
-copyuvm(pde_t *pgdir, uint sz)
+copyuvm(pde_t *pgdir, uint sz, int parentpid, int childpid)
 {
   pde_t *d;
   pte_t *pte;
   uint pa, i, flags;
   char *mem;
+  int srcblock, dstblock, swapflags;
 
   if((d = setupkvm()) == 0)
     return 0;
 for(i = 0; i < sz; i += PGSIZE){
-  pte = walkpgdir(pgdir, (void *) i, 0);
-  if(pte == 0 || !(*pte & PTE_P))
-    continue;
+ pte = walkpgdir(pgdir, (void *) i, 0);
+
+if(pte == 0 || !(*pte & PTE_P)){
+  srcblock = swaplookup(parentpid, i);
+
+  if(srcblock >= 0){
+    swapflags = swapgetflags(parentpid, i);
+    if(swapflags < 0)
+      goto bad;
+
+    dstblock = swapalloc(childpid, i, swapflags);
+    if(dstblock < 0)
+      goto bad;
+
+    if(swapcopy(srcblock, dstblock) < 0){
+      swapfree(childpid, i);
+      goto bad;
+    }
+  }
+  continue;
+}
   pa = PTE_ADDR(*pte);
 
     flags = PTE_FLAGS(*pte);
@@ -555,11 +674,13 @@ for(i = 0; i < sz; i += PGSIZE){
       kfree(mem);
       goto bad;
     }
+     fiforecord(d, i);
   }
   return d;
 
 bad:
   freevm(d);
+  swapfreepid(childpid);
   return 0;
 }
 

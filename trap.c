@@ -58,20 +58,14 @@ trap(struct trapframe *tf)
 
     if(swaplookup(p->pid, pageva) >= 0){
       if(swapin(p->pgdir, pageva, p->pid) == 0){
-        cprintf("swapin restored page %x\n", pageva);
         break;
       }
     } else {
       if(loadelfpage(p->pgdir, pageva, p) == 0){
-        cprintf("loaded ELF page %x\n", pageva);
         break;
       }
     }
   }
-
-  cprintf("page fault detected:\n");
-  cprintf("%x\n", va);
-  cprintf("error code: %d\n", tf->err);
 
   if(p == 0 || (tf->cs & 3) != DPL_USER)
     panic("kernel page fault");
@@ -79,7 +73,7 @@ trap(struct trapframe *tf)
   p->killed = 1;
   break;
 }
-  case T_IRQ0 + IRQ_TIMER:	
+  case T_IRQ0 + IRQ_TIMER:
     if(cpuid() == 0){
       acquire(&tickslock);
       ticks++;

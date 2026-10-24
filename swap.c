@@ -1,3 +1,4 @@
+#include "param.h"
 #include "types.h"
 #include "defs.h"
 #include "spinlock.h"
@@ -79,6 +80,32 @@ int swapread(int block, char *page)
     b = bread(SWAPDEV, block + i);
     memmove(page + i * BSIZE, b->data, BSIZE);
     brelse(b);
+  }
+
+  return 0;
+}
+
+
+int
+swapcopy(int src, int dst)
+{
+  struct buf *srcbuf, *dstbuf;
+  int i;
+
+  if(src < SWAPSTART || dst < SWAPSTART ||
+     src + BLOCKSPERPAGE > THIRDDISKSIZE ||
+     dst + BLOCKSPERPAGE > THIRDDISKSIZE ||
+     (src - SWAPSTART) % BLOCKSPERPAGE != 0 ||
+     (dst - SWAPSTART) % BLOCKSPERPAGE != 0)
+    return -1;
+
+  for(i = 0; i < BLOCKSPERPAGE; i++){
+    srcbuf = bread(SWAPDEV, src + i);
+    dstbuf = bread(SWAPDEV, dst + i);
+    memmove(dstbuf->data, srcbuf->data, BSIZE);
+    bwrite(dstbuf);
+    brelse(dstbuf);
+    brelse(srcbuf);
   }
 
   return 0;

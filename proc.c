@@ -196,7 +196,8 @@ fork(void)
   }
 
   // Copy process state from proc.
-  if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz)) == 0){
+  if((np->pgdir = copyuvm(curproc->pgdir, curproc->sz,
+                        curproc->pid, np->pid)) == 0){
     kfree(np->kstack);
     np->kstack = 0;
     np->state = UNUSED;
@@ -263,7 +264,7 @@ if(curproc->execip){
 
 end_op();
 curproc->cwd = 0;
-  
+
   swapfreepid(curproc->pid);
   acquire(&ptable.lock);
 
@@ -425,7 +426,7 @@ if(first){
     first = 0;
     iinit(ROOTDEV);
     initlog(ROOTDEV);
-	
+
 	// Write a known pattern to block 3 on the third disk.
     testbuf = bread(2, 3);
     memset(testbuf->data, 0xA5, BSIZE);

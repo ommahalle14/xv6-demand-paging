@@ -30,7 +30,12 @@ OBJS = \
 	swap.o\
 
 # Cross-compiling (e.g., on Mac OS X)
-TOOLPREFIX = /Users/ommahalle/xv6-toolchain/gcc-tools/i386-elf-
+ifeq ($(origin TOOLPREFIX),undefined)
+ifneq ($(wildcard $(HOME)/xv6-toolchain/gcc-tools/i386-elf-gcc),)
+TOOLPREFIX = $(HOME)/xv6-toolchain/gcc-tools/i386-elf-
+TOOLCHAIN_FLAGS = -B$(HOME)/xv6-toolchain/gcc-tools/
+endif
+endif
 
 
 # Using native tools (e.g., on X86 Linux)
@@ -78,9 +83,9 @@ AS = $(TOOLPREFIX)as
 LD = $(TOOLPREFIX)ld
 OBJCOPY = $(TOOLPREFIX)objcopy
 OBJDUMP = $(TOOLPREFIX)objdump
-CFLAGS = -B$(HOME)/xv6-toolchain/gcc-tools/ -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -MD -ggdb -m32 -fno-omit-frame-pointer
+CFLAGS = $(TOOLCHAIN_FLAGS) -fno-pic -static -fno-builtin -fno-strict-aliasing -O2 -Wall -Werror -MD -ggdb -m32 -fno-omit-frame-pointer
 CFLAGS += $(shell $(CC) -fno-stack-protector -E -x c /dev/null >/dev/null 2>&1 && echo -fno-stack-protector)
-ASFLAGS = -B$(HOME)/xv6-toolchain/gcc-tools/ -m32 -gdwarf-2 -Wa,-divide
+ASFLAGS = $(TOOLCHAIN_FLAGS) -m32 -gdwarf-2 -Wa,-divide
 # FreeBSD ld wants ``elf_i386_fbsd''
 LDFLAGS += -m $(shell $(LD) -V | grep elf_i386 2>/dev/null | head -n 1)
 
@@ -183,12 +188,11 @@ UPROGS=\
 	_usertests\
 	_wc\
 	_zombie\
-	_cp\
 	_pgfault\
 	_diskio\
 	_evicttest
 
-	
+
 
 fs.img: mkfs README $(UPROGS)
 	./mkfs fs.img README $(UPROGS)
